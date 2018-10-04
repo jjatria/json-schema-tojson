@@ -6,6 +6,7 @@ use warnings;
 use Mojo::Base -base;
 use Cpanel::JSON::XS;
 use String::Random;
+use Data::Fake qw( Core Internet Text );
 use DateTime;
 use Hash::Merge qw/ merge /;
 
@@ -67,9 +68,7 @@ sub _random_boolean {
 	return $self->_example_from_spec( $schema )
 		if scalar $self->_example_from_spec( $schema );
 
-	return rand > 0.5
-		? Cpanel::JSON::XS::true
-		: Cpanel::JSON::XS::false
+	return fake_pick( Cpanel::JSON::XS::true, Cpanel::JSON::XS::false )->();
 }
 
 sub _random_integer {
@@ -134,35 +133,23 @@ sub _random_string {
 		return $self->_random_element( [ @enum ] );
 	}
 
-	return $self->_str_rand->randregex( $schema->{pattern} )
-		if $schema->{pattern};
+    if ($schema->{pattern}) {
+        my $pattern = $schema->{pattern} =~ s/^\^|\$$//gr;
+        return $self->_str_rand->randregex( $pattern )
+    };
 
 	if ( my $format = $schema->{format} ) {
 		return {
-			"date-time" => DateTime->now->subtract(
-				weeks => $self->_random_integer({ minimum => 1, maximum => 500 }),
-				days => $self->_random_integer({ minimum => 1 }),
-				hours => $self->_random_integer({ minimum => 1 }),
-				minutes => $self->_random_integer({ minimum => 1 }),
-				seconds => $self->_random_integer({ minimum => 1 }),
-			)->iso8601 . '.000Z',
-			"email"     =>
-				$self->_random_string( { pattern => '[A-Za-z]{12}' } )
-				. '@'
-				. $self->_random_string( { pattern => '[A-Za-z]{12}' } )
-				. '.com',
-			"hostname"  => $self->_random_string( { pattern => '[A-Za-z]{12}' } ),
-			"ipv4"      => join( '.',map {  $self->_random_integer({
+			"date-time" => fake_past_datetime()->(),
+			"email"     => fake_email()->(),
+			"hostname"  => fake_domain()->(),
+			"ipv4"      => join( '.', map {  $self->_random_integer({
 				minimum => 1,
 				maximum => 254,
 			}) } 1 .. 4 ),
 			"ipv6"      => '2001:0db8:0000:0000:0000:0000:1428:57ab',
-			"uri"       => 'https://www.'
-				. $self->_random_string( { pattern => '[a-z]{12}' } )
-				. '.com',
-			"uriref"    => 'https://www.'
-				. $self->_random_string( { pattern => '[a-z]{12}' } )
-				. '.com',
+			"uri"       => 'https://www.' . fake_domain()->(),
+			"uriref"    => 'https://www.' . fake_domain()->(),
 		}->{ $format };
 	}
 
@@ -172,9 +159,14 @@ sub _random_string {
 	my $max = $schema->{maxLength}
 		|| ( $schema->{minLength} ? $schema->{minLength} + 1 : 50 );
 
-	return $self->_str_rand->randpattern(
-		'.' x $self->_random_integer( { minimum => $min, maximum => $max } ),
-	);
+    my $string = '';
+    while (length $string < $min) {
+        $string .= ' ' if $string;
+        $string .= fake_words(1)->();
+    }
+    $string = substr($string, 0, $max) if length($string) > $max;
+
+	return $string;
 }
 
 sub _random_array {
@@ -426,7 +418,7 @@ sub _guess_method {
 
 sub _random_element {
 	my ( $self,$list ) = @_;
-	return $list->[ int( rand( scalar( @{ $list } ) ) ) ];
+	return fake_pick( @{$list} )->();
 }
 
 =encoding utf8
